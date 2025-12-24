@@ -111,36 +111,7 @@ def step(split, opt, actions, dataLoader, model, criterion, optimizer=None):
 
     # 下面是原来的代码（保持不变）
             #input_2D = input_2D.view(N, -1, opt.n_joints,opt.in_channels, 1).permute(0, 3, 1, 2, 4).type(torch.cuda.FloatTensor) # N, C, T, J, M
-            # ====== 强力修复代码 Start ======
-            # 1. 先把输入数据展平成 (N, -1) 确保我们可以算清总数
-            input_flat = input_2D.view(N, -1)
-    
-    # 2. 算一下每个样本有多少个数
-            dim_per_sample = input_flat.shape[1] # 应该是 34 (17*2) 或 32 (16*2)
-    
-    # 3. 检查是否发生 "配置是16点，但数据是17点(34)" 的情况
-            if opt.n_joints == 16 and dim_per_sample == 34:
-        # print("检测到 17 关节点数据，正在自动裁剪适配 16 关节点...")
-        # 还原维度: (Batch, Time, 17个点, 2坐标) 
-        # 注意：这里 -1 代表 Time，会自动推导
-                input_reshaped = input_flat.view(N, -1, 17, 2)
-        
-        # 核心操作：切掉第 0 个点 (通常是 Pelvis/Root)，保留后 16 个
-                input_reshaped = input_reshaped[:, :, 1:, :] 
-        
-        # 此时形状变成了 (Batch, Time, 16, 2)，符合要求了
-        # 接着构造模型需要的 5D 张量: (N, C, T, J, M)
-        # 先增加最后的一维 M=1 -> (Batch, Time, 16, 2, 1)
-                input_reshaped = input_reshaped.unsqueeze(-1)
-        
-        # 执行 Permute: (N, T, J, C, M) -> (N, C, T, J, M)
-        # 对应索引: 0->0, 3->1, 1->2, 2->3, 4->4
-                input_2D = input_reshaped.permute(0, 3, 1, 2, 4).type(torch.cuda.FloatTensor)
-        
-            else:
-        # 如果维度本来就是对的 (比如 32)，或者配置就是 17，则按原逻辑执行
-                input_2D = input_2D.view(N, -1, opt.n_joints, opt.in_channels, 1).permute(0, 3, 1, 2, 4).type(torch.cuda.FloatTensor)
-    # ====== 强力修复代码 End ======
+           
             #input_2D = input_2D.view(N, -1, opt.n_joints,opt.in_channels, 1).permute(0, 3, 1, 2, 4).type(torch.cuda.FloatTensor) # N, C, T, J, M
             #print(f'input_2D dimensions: {input_2D.size()}')
             output_3D = flex_gcn(input_2D)
