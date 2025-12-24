@@ -83,29 +83,29 @@ def step(split, opt, actions, dataLoader, model, criterion, optimizer=None):
         else:
              # ====== 强力修复代码 V2 (修正维度顺序) Start ======
     # 1. 先把输入数据展平成 (N, -1)
-    input_flat = input_2D.view(N, -1)
+            input_flat = input_2D.view(N, -1)
     
     # 2. 算一下每个样本有多少个数
-    dim_per_sample = input_flat.shape[1] # 34 or 32
+            dim_per_sample = input_flat.shape[1] # 34 or 32
     
     # 3. 准备数据
-    if opt.n_joints == 16 and dim_per_sample == 34:
+            if opt.n_joints == 16 and dim_per_sample == 34:
         # 如果是 17 点数据，还原并切片
-        input_reshaped = input_flat.view(N, -1, 17, 2)
-        input_reshaped = input_reshaped[:, :, 1:, :] # 切掉第0个点 -> (N, T, 16, 2)
-    else:
+                input_reshaped = input_flat.view(N, -1, 17, 2)
+                input_reshaped = input_reshaped[:, :, 1:, :] # 切掉第0个点 -> (N, T, 16, 2)
+            else:
         # 否则直接还原为 16 点
-        input_reshaped = input_flat.view(N, -1, opt.n_joints, opt.in_channels) # (N, T, 16, 2)
+                input_reshaped = input_flat.view(N, -1, opt.n_joints, opt.in_channels) # (N, T, 16, 2)
 
     # 4. 关键修改：调整维度顺序以匹配 matmul (N, C, T, V, M) vs (N, M, T, V, C)
     # 报错显示 matmul 需要最后一维是 2 (Channels)
     # 我们构造 (N, M, T, V, C) -> (Batch, 1, Time, Joints, Channels)
     
-    input_reshaped = input_reshaped.unsqueeze(1) # 在 dim 1 增加 M=1 -> (N, 1, T, 16, 2)
+            input_reshaped = input_reshaped.unsqueeze(1) # 在 dim 1 增加 M=1 -> (N, 1, T, 16, 2)
     
     # 注意：这里不需要 permute 了，因为 input_reshaped 现在的顺序就是 (N, M, T, J, C)
     # (N, 1, T, 16, 2) -> 最后一维是 2，完美匹配权重 (2, 384)
-    input_2D = input_reshaped.type(torch.cuda.FloatTensor)
+            input_2D = input_reshaped.type(torch.cuda.FloatTensor)
     
     # ====== 强力修复代码 V2 End ======
 
