@@ -81,20 +81,33 @@ def step(split, opt, actions, dataLoader, model, criterion, optimizer=None):
         if opt.test_augmentation and split =='test':
             input_2D, output_3D = input_augmentation(input_2D, flex_gcn, joints_left, joints_right)
         else:
-              # === 新增修复代码开始 ===
-    # 检查：如果配置是16个点，但数据里读到了34个数（即17个点*2坐标），说明多了一个根节点
-            if opt.n_joints == 16 and input_2D.shape[-1] == 34:
-        # 1. 先把数据还原成 (Batch, Time, 17个点, 2坐标)
-                N_temp, T_temp = input_2D.shape[0], input_2D.shape[1]
-                temp_data = input_2D.view(N_temp, T_temp, 17, 2)
-        
-        # 2. 切掉第1个点（通常索引0是Pelvis/根节点，3D真值里通常把它去掉了）
-        # 剩下的就是16个点
-                temp_data = temp_data[:, :, 1:, :] 
-        
-        # 3. 重新变回原来的平铺格式 (Batch, Time, 32) -> 16*2=32
-                input_2D = temp_data.contiguous().view(N_temp, T_temp, -1)
-    # === 新增修复代码结束 ===
+             # ====== 强力修复代码 V2 (修正维度顺序) Start ======
+    # 1. 先把输入数据展平成 (N, -1)
+    input_flat = input_2D.view(N, -1)
+    
+    # 2. 算一下每个样本有多少个数
+    dim_per_sample = input_flat.shape[1] # 34 or 32
+    
+    # 3. 准备数据
+    if opt.n_joints == 16 and dim_per_sample == 34:
+        # 如果是 17 点数据，还原并切片
+        input_reshaped = input_flat.view(N, -1, 17, 2)
+        input_reshaped = input_reshaped[:, :, 1:, :] # 切掉第0个点 -> (N, T, 16, 2)
+    else:
+        # 否则直接还原为 16 点
+        input_reshaped = input_flat.view(N, -1, opt.n_joints, opt.in_channels) # (N, T, 16, 2)
+
+    # 4. 关键修改：调整维度顺序以匹配 matmul (N, C, T, V, M) vs (N, M, T, V, C)
+    # 报错显示 matmul 需要最后一维是 2 (Channels)
+    # 我们构造 (N, M, T, V, C) -> (Batch, 1, Time, Joints, Channels)
+    
+    input_reshaped = input_reshaped.unsqueeze(1) # 在 dim 1 增加 M=1 -> (N, 1, T, 16, 2)
+    
+    # 注意：这里不需要 permute 了，因为 input_reshaped 现在的顺序就是 (N, M, T, J, C)
+    # (N, 1, T, 16, 2) -> 最后一维是 2，完美匹配权重 (2, 384)
+    input_2D = input_reshaped.type(torch.cuda.FloatTensor)
+    
+    # ====== 强力修复代码 V2 End ======
 
     # 下面是原来的代码（保持不变）
             #input_2D = input_2D.view(N, -1, opt.n_joints,opt.in_channels, 1).permute(0, 3, 1, 2, 4).type(torch.cuda.FloatTensor) # N, C, T, J, M
